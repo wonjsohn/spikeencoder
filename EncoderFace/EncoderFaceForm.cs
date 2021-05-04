@@ -26,21 +26,12 @@ namespace EncoderFace
 
         private void swingbutton1_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+ 
 
                 //load and play the swing 1
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("C");
                     sp.Close();
@@ -49,26 +40,17 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void swingbutton2_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+
 
                 //load and play the swing 2
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("D");
                     sp.Close();
@@ -77,26 +59,17 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void swingbutton3_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+
 
                 //load and play the swing 3
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("E");
                     sp.Close();
@@ -105,26 +78,17 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void abnormal_button1_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+
 
                 //load and play the swing 4
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("F");
                     sp.Close();
@@ -133,26 +97,17 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void abnormal_button2_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+
 
                 //load and play the swing 5
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("H");
                     sp.Close();
@@ -161,26 +116,17 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+
 
                 //load and play the swing 
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("G");
                     sp.Close();
@@ -189,26 +135,17 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+
 
                 //load and play the swing 
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("I");
                     sp.Close();
@@ -217,26 +154,16 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void button4_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
 
                 //load and play the swing 
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("J");
                     sp.Close();
@@ -245,26 +172,17 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
-            if (this.live_radioButton.Checked)
-            {
-                MessageBox.Show("Runmode should be playback", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.rmwireless_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be wired", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else
-            {
+
 
                 //load and play the swing 
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("K");
                     sp.Close();
@@ -273,7 +191,7 @@ namespace EncoderFace
                 {
                     MessageBox.Show(ex.Message);
                 }
-            }
+            
         }
 
         private void IZNeuron_radioButton_CheckedChanged(object sender, EventArgs e)
@@ -281,7 +199,7 @@ namespace EncoderFace
             //Encoding mode: IZNeuron 
             try
             {
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
                 sp.Write("A");//real time gyro
                 sp.Close();
@@ -298,7 +216,7 @@ namespace EncoderFace
             //encoding mode: fixed rate
             try
             {
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
                 sp.Write("B"); //real time fixed rate
                 sp.Close();
@@ -314,7 +232,7 @@ namespace EncoderFace
             //runoding mode: live
             try
             {
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
                 sp.Write("X"); // live mode
                 sp.Close();
@@ -330,7 +248,7 @@ namespace EncoderFace
             //runoding mode:playback
             try
             {
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
                 sp.Write("Y"); // playback mode
                 sp.Close();
@@ -358,7 +276,7 @@ namespace EncoderFace
                 A = BitConverter.GetBytes(freq);
 
 
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
                 sp.Write(A, 0, 2); // send number 
                 sp.Close();
@@ -379,7 +297,7 @@ namespace EncoderFace
             //transmission mode: rf wireless
             try
             {
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
                 sp.Write("V"); // rf wireless mode
                 sp.Close();
@@ -390,14 +308,14 @@ namespace EncoderFace
             }
         }
 
-        private void wireout_radioButton_CheckedChanged(object sender, EventArgs e)
+        private void RFMOff_radioButton_CheckedChanged(object sender, EventArgs e)
         {
-            //transmission mode: wired
+            //transmission mode: RFM off (not receiving from the gyro board)
             try
             {
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
-                sp.Write("W"); //  wired mode
+                sp.Write("W"); // 
                 sp.Close();
             }
             catch (Exception ex)
@@ -411,7 +329,7 @@ namespace EncoderFace
             //idle definition
             try
             {
-                SerialPort sp = new SerialPort("COM40", 115200);
+                SerialPort sp = new SerialPort("COM35", 115200);
                 sp.Open();
                 sp.Write("T"); //  idle: silent. Keep this silent in playback mode
                 sp.Close();
@@ -428,18 +346,73 @@ namespace EncoderFace
             if (this.playback_radioButton.Checked)
             {
                 MessageBox.Show("Runmode should be live", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            else if (this.wireout_radioButton.Checked)
-            {
-                MessageBox.Show("Tranmission mode should be rf wireless", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            } else if (this.IZNeuron_radiobutton.Checked) {
+                MessageBox.Show("Encoding mode should be Fixed rate", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             else
             {
                 try
                 {
-                    SerialPort sp = new SerialPort("COM40", 115200);
+                    SerialPort sp = new SerialPort("COM35", 115200);
                     sp.Open();
                     sp.Write("U"); //  idle: low freq (EXP3 mode) @ live mode only. 
+                    sp.Close();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message);
+                }
+            }
+        }
+
+        private void idle_definition_groupBox_Enter(object sender, EventArgs e)
+        {
+
+        }
+
+        private void idle_run_both50hz_radioButton_CheckedChanged(object sender, EventArgs e)
+        {
+            if (this.playback_radioButton.Checked)
+            {
+                MessageBox.Show("Runmode should be live", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            else if (this.IZNeuron_radiobutton.Checked)
+            {
+                MessageBox.Show("Encoding mode should be Fixed rate", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            else
+            {
+                try
+                {
+                    SerialPort sp = new SerialPort("COM35", 115200);
+                    sp.Open();
+                    sp.Write("V"); //  idle: low freq (EXP3 mode) @ live mode only. 
+                    sp.Close();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message);
+                }
+            }
+        }
+
+        private void idle200_run300_radioButton_CheckedChanged(object sender, EventArgs e)
+        {
+            if (this.playback_radioButton.Checked)
+            {
+                MessageBox.Show("Runmode should be live", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            else if (this.IZNeuron_radiobutton.Checked)
+            {
+                MessageBox.Show("Encoding mode should be Fixed rate", "Help", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            else
+            {
+                try
+                {
+                    SerialPort sp = new SerialPort("COM35", 115200);
+                    sp.Open();
+                    sp.Write("W"); //
                     sp.Close();
                 }
                 catch (Exception ex)

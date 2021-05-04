@@ -1,6 +1,9 @@
 /*
- Name:		spikeencoder.ino
- Created:	12/16/2019 11:55:40 PM
+ Name:		 spikeencoder.ino
+ Created:	 12/16/2019 11:55:40 PM
+ big change: 4/23/2021.  integrate spikeencoder and RFM_relay into a single solution. IZN neuron needs to run in the previously RFM_relay 
+		     to overcome the wireless pulse rate cap (130Hz) wiht the RFM.  We send the leg kinematic instead thru RFM and generate spikes
+
  Author:	wonjo
 */
 ////////////////////////////////////////////////////////////////////////////
@@ -15,6 +18,12 @@
 //#include   "SettingsArduino.h"
 // keep this project (shared in the onedrive). 
 // 20210127	 Gyro: replace BNO055 with L3GH20 for faster rate / dual.
+
+// *******   PINS   ********
+// PIN_PULSEOUT_TO_CWU  10  // PA18 (11, PA16 is damaged in arduino) 
+// 
+
+
 
 #include <SPI.h>
 #include <Wire.h>
@@ -115,86 +124,20 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 // Packets /sec =  7812.5/12 = 651  (Hz)?
 
 
-volatile boolean spikeout = false;
-volatile uint32_t tcc1_per = 60000; // fixed rate pulse out period (DIV8: 60000 is 100Hz, 30000 is 200 Hz). TCC limit: 24 bits. 
-volatile uint32_t tcc1_idle_per = 900000;   //  EXP3. 
-volatile uint16_t tcc1_pulsewidth = 1500;  // TCC1 pulseout thinkness = 200us now.
 
 
+#define PIN_FR			9  // PA07, for fixed rate pulse output. (TODO: make sure PW are the same)
+//#define PIN_THIN_PULSEOUT	11 // PA16   // IZN output  (pin broken in RFM_relay)
+#define PIN_FR_IN			6   //PA20    (attachIntterupt for PIN_PA07)
 
-#define PIN_PA07			9  // PA07, for fixed pulse output. 
-#define PIN_NEURON1			10 // PA18
-#define PIN_NEURON2			5 // PA15
 #define PIN_LED				13 // PA17 
+#define PIN_PULSEOUT_TO_CWU  10// PA18 (11, PA16 is damaged in arduino) 
 
-#define PIN_PUSLEIN			12 // PA19
-#define PIN_THIN_PULSEOUT	11 // PA16
+#define PIN_DAC				14 // PA02 (A0)
 
 
-#define IS_BNO055 false    //100Hz
-#define IS_L3GD20 true    //1kHz
-#define IS_MPU6050	false   // up to 8kHz gyro.?
-#define IS_MPU6050_raw	false   // up to 8kHz gyro.?
+
 //#define NO_RF_Wireless  true  //  False for live gyro / fixed rate.   True during swing data recording where you need faster rate & playback.
-
-
-#if IS_BNO055
-/* Set the delay between fresh samples */
-#define BNO055_SAMPLERATE_DELAY_MS (50)
-
-// Check I2C device address and correct line below (by default address is 0x29 or 0x28), id, address
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
-#endif
-
-#if IS_L3GD20
-/* Assign a unique ID to this sensor at the same time */
-Adafruit_L3GD20_Unified gyro1 = Adafruit_L3GD20_Unified(1);   // 1st
-//Adafruit_L3GD20_Unified gyro2 = Adafruit_L3GD20_Unified(2);   // 2nd
-#endif
-
-#if IS_MPU6050
-// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
-// for both classes must be in the include path of your project
-	#include "I2Cdev.h"
-	#include "MPU6050.h"
-// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
-// is used in I2Cdev.h
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-	#include "Wire.h"
-#endif
-// class default I2C address is 0x68
-// specific I2C addresses may be passed as a parameter here
-// AD0 low = 0x68 (default for InvenSense evaluation board)
-// AD0 high = 0x69
-//MPU6050 accelgyro;
-MPU6050 accelgyro(0x69); // <-- use for AD0 high
-
-int16_t ax, ay, az;
-int16_t gx, gy, gz;
-
-// uncomment "OUTPUT_READABLE_ACCELGYRO" if you want to see a tab-separated
-// list of the accel X/Y/Z and then gyro X/Y/Z values in decimal. Easy to read,
-// not so easy to parse, and slow(er) over UART.
-#define OUTPUT_READABLE_ACCELGYRO
-
-// uncomment "OUTPUT_BINARY_ACCELGYRO" to send all 6 axes of data as 16-bit
-// binary, one right after the other. This is very fast (as fast as possible
-// without compression or data loss), and easy to parse, but impossible to read
-// for a human.
-//#define OUTPUT_BINARY_ACCELGYRO
-
-#endif
-
-#if IS_MPU6050_raw
-#include <Wire.h>
-const int MPU = 0x68; // MPU6050 I2C address
-float GyroX, GyroY, GyroZ;
-float gyroAngleX, gyroAngleY, gyroAngleZ;
-float roll, pitch, yaw;
-float GyroErrorX, GyroErrorY, GyroErrorZ;
-int c = 0;
-
-#endif
 
 
 #define FIXED_POINT_ARITH	false    // # fixed point vs floating point speed difference. 20210318 WJS 
@@ -341,27 +284,36 @@ int Stim_State = 0;      // State of the internal stimulator
 //output_t Output; // output structure for plotting
 String   OutputStr;
 
-#if IS_L3GD20
-int gyro_scale_orig = 70;//30;//30 ; // gyro values typically < 1000. , if 150,too easily saturate to max (~100Hz)
-#elif ISMPU6050
-int gyro_scale = 1;
-#endif
+
+//** PARAMS  **//
+// gyro_scale_orig is the same as in the gryo_sender.  The purpose is to scale it y-range to 0-255 (from the gyro raw data which is <10)
+int gyro_scale_orig = 30;//was 40 (SP1) but change to match gyro_sender (that doesn't clip) 30;//30 ; // gyro values typically < 1000. , if 150,too easily saturate to max (~100Hz)
+int gyro_scale_high_spike_train = 40;  // This parameter to map the gyro to higher spike rate domain ( >300Hz for high values) 
+int gyro_live_factor = 2;    //1: usually upto ~160Hz,  max ~220 Hz. 2: usually upto ~300Hz, max ~400HZ   3: usually up to ~400Hz, max ~600Hz determines the frequency range during live. 
+
+//TCC 
+volatile boolean spikeout = false;
+volatile uint32_t tcc1_per = 30000;//60000; // fixed rate pulse out period (DIV8: 60000 is 100Hz, 30000 is 200 Hz). TCC limit: 24 bits. 
+volatile uint32_t tcc1_idle_per = 170000;   //  EXP3.  35.30Hz   
+volatile uint16_t tcc1_pulsewidth = 1500;  // TCC1 pulseout thinkness = 200us now.
+volatile uint32_t tcc1_50hz_per = 120000; // 50Hz mode for exp3
+
+// exp3
+//bool low_freq_during_idle = true; // default: idle state (stationary state) doesn't generate feedback. 
+String exp3_mode = "MODE1_idle_silent";
 
 #endif 
-
-
-
-
-//int startMicros = micros();
 
 //serial button options 
 String runmode = "live"; // live or playback.
 String encoding_mode = "IZNeuron";  // IZNeuron or fixed rate.
 String cadence_mode = "None"; // e.g. cad50, cad50_kick1st.
+
+uint8_t gyrodata = 0; // wireless gyro data 8 bit
+
 //String transmission_mode = "rf_wireless";  //  wireless mode
 
 int  n = 0;
-
 float playback_scale = 1.05;
 
 
@@ -407,7 +359,7 @@ void setup() {
 	//while (!SerialUSB) {
 	//	delay(1);
 	//}
-
+	SerialUSB.begin(9600);
 
 	rf95_setup();  // setup radio head communication 
 
@@ -430,113 +382,16 @@ void setup() {
 
 	while (GCLK->STATUS.bit.SYNCBUSY);                // Wait for synchronization  
 
-	// gyroscope setup 
 
-#if IS_BNO055
-	// BN0055 Setting 
-	/* Initialise the sensor */
-	if (!bno.begin())
-	{
-		/* There was a problem detecting the BNO055 ... check your connections */
-		Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
-		while (1);
-	}
+	// to share the one output pin to CWU between IZN and FR mode. 
+	pinMode(PIN_FR_IN, INPUT_PULLUP); //  will be uses as EIC. PA07 -> PA20
+	attachInterrupt(PIN_FR_IN, interrupt_pulsegen_FR, CHANGE);
 
-	delay(500);
 
-	/* Display some basic information on this sensor */
-	displaySensorDetails();
-
-	/* Optional: Display current status */
-	displaySensorStatus();
-
-	bno.setExtCrystalUse(true);
-	//end of BNO055 setting 
-#endif
-
-#if IS_L3GD20
-	SerialUSB.begin(115200);
-	 /* Enable auto-ranging */
-	gyro1.enableAutoRange(true);
-	//gyro2.enableAutoRange(true);
-	/* Initialise the sensor */
-	if (!gyro1.begin(GYRO_RANGE_500DPS))
-	{
-		/* There was a problem detecting the L3GD20 ... check your connections */
-		SerialUSB.println("Ooops, (gyro1) no L3GD20 detected ... Check your wiring!");
-		while (1);
-	}
-	///* Initialise the sensor */
-	//if (!gyro2.begin(GYRO_RANGE_500DPS))
-	//{
-	//	/* There was a problem detecting the L3GD20 ... check your connections */
-	//	SerialUSB.println("Ooops, (gyro2) no L3GD20 detected ... Check your wiring!");
-	//	while (1);
-	//}
-	/* Display some basic information on this sensor */
-	//displaySensorDetails();
-
-#endif
-	
-#if IS_MPU6050
-	// join I2C bus (I2Cdev library doesn't do this automatically)
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-	Wire.begin();
-	//Wire.setClock(200000); // 200kHz I2C clock. (max 400k in spec sheet but it gets 0's) Comment this line if having compilation difficulties
-
-#elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-	Fastwire::setup(400, true);
-#endif
-	SerialUSB.begin(38400);
-
-	// initialize device
-	SerialUSB.println("Initializing I2C devices...");
-	accelgyro.initialize();
-
-	// verify connection
-	SerialUSB.println("Testing device connections...");
-	SerialUSB.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
-	// use the code below to change accel/gyro offset values
-
-	//accelgyro.setXGyroOffset(220);
-	//accelgyro.setYGyroOffset(76);
-	//accelgyro.setZGyroOffset(-85);
-	
-
-  /*
-  SerialUSB.println("Updating internal sensor offsets...");
-  // -76	-2359	1688	0	0	0
-  SerialUSB.print(accelgyro.getXAccelOffset()); SerialUSB.print("\t"); // -76
-  SerialUSB.print(accelgyro.getYAccelOffset()); SerialUSB.print("\t"); // -2359
-  SerialUSB.print(accelgyro.getZAccelOffset()); SerialUSB.print("\t"); // 1688
-  SerialUSB.print(accelgyro.getXGyroOffset()); SerialUSB.print("\t"); // 0
-  SerialUSB.print(accelgyro.getYGyroOffset()); SerialUSB.print("\t"); // 0
-  SerialUSB.print(accelgyro.getZGyroOffset()); SerialUSB.print("\t"); // 0
-  SerialUSB.print("\n");
-  accelgyro.setXGyroOffset(220);
-  accelgyro.setYGyroOffset(76);
-  accelgyro.setZGyroOffset(-85);
-  SerialUSB.print(accelgyro.getXAccelOffset()); SerialUSB.print("\t"); // -76
-  SerialUSB.print(accelgyro.getYAccelOffset()); SerialUSB.print("\t"); // -2359
-  SerialUSB.print(accelgyro.getZAccelOffset()); SerialUSB.print("\t"); // 1688
-  SerialUSB.print(accelgyro.getXGyroOffset()); SerialUSB.print("\t"); // 0
-  SerialUSB.print(accelgyro.getYGyroOffset()); SerialUSB.print("\t"); // 0
-  SerialUSB.print(accelgyro.getZGyroOffset()); SerialUSB.print("\t"); // 0
-  SerialUSB.print("\n");
-  */
-#endif
-
-#if IS_MPU6050_raw
-	SerialUSB.begin(38400);
-	Wire.begin();
-	Wire.setClock(200000); // Initialize comunication
-	Wire.beginTransmission(MPU);       // Start communication with MPU6050 // MPU=0x68
-	Wire.write(0x6B);                  // Talk to the regisster 6B
-	Wire.write(0x00);                  // Make reset - place a 0 into the 6B register
-	Wire.endTransmission(true);        //end the transmission
-	//calculate_IMU_error();
-	delay(20);
-#endif
+	// DAC setting (A0 pin)
+	analogWriteResolution(10); //10 is max. 
+	//analogWrite(A0, setDAC(I_Synapse1) );
+	//analogWrite(A0,  0 ); // 0 to 1023?
 
 
 
@@ -553,20 +408,19 @@ void setup() {
 	u2 = 0;
 #endif
 
-	// setting for IZ NEURON AND IS_GYRO
-	// DISABLE FIXED RATE OUTPUT  (control mux to disable PWM and enable digitalWrite
-	PORT->Group[g_APinDescription[PIN_NEURON1].ulPort].PMUX[g_APinDescription[PIN_NEURON1].ulPin >> 1].bit.PMUXE = PORT_PMUX_PMUXE_B_Val; //PA18
-	PORT->Group[g_APinDescription[PIN_NEURON2].ulPort].PMUX[g_APinDescription[PIN_NEURON2].ulPin >> 1].bit.PMUXO = PORT_PMUX_PMUXO_B_Val; //PA15
+	//// setting for IZ NEURON AND IS_GYRO
+	//// DISABLE FIXED RATE OUTPUT  (control mux to disable PWM and enable digitalWrite
+	//PORT->Group[g_APinDescription[PIN_NEURON1].ulPort].PMUX[g_APinDescription[PIN_NEURON1].ulPin >> 1].bit.PMUXE = PORT_PMUX_PMUXE_B_Val; //PA18
+	//PORT->Group[g_APinDescription[PIN_NEURON2].ulPort].PMUX[g_APinDescription[PIN_NEURON2].ulPin >> 1].bit.PMUXO = PORT_PMUX_PMUXO_B_Val; //PA15
 
 	// IZ NEURON ENCODING
 	
 
 	pinMode(PIN_LED, OUTPUT);
-	pinMode(PIN_PUSLEIN, INPUT); // 
-	attachInterrupt(PIN_PUSLEIN, interrupt_pulsegen_pulsein, RISING); // not used?
 
-	pinMode(PIN_PA07, OUTPUT);
-	pinMode(PIN_THIN_PULSEOUT, OUTPUT); // 
+	pinMode(PIN_FR, OUTPUT);
+
+
 	oneshot_TCC0_thinPulse_setup();  // 
 	fixed_rate_pulse_out_setup();
 
@@ -575,82 +429,127 @@ void setup() {
 
 int16_t packetnum = 0;  // packet counter, we increment per xmission
 
+//
+//
+//void rf_send() {
+//	//SerialUSB.println("Sending to rf95_server");
+// // Send a message to rf95_server
+//
+//
+// // ** rf95.send() only when there is a spike.  **//
+//	if (spikeout) {
+//		digitalWrite(PIN_LED, HIGH);
+//		spikeout = false;
+//		//noInterrupts();
+//		char radiopacket = '1';
+//		//itoa(packetnum++, radiopacket, 10);
+//		SerialUSB.print("Sending..... "); SerialUSB.println(radiopacket);
+//		//radiopacket[0] = 0;
+//
+//
+//		rf95.send((uint8_t*)radiopacket, 1); 
+//		digitalWrite(PIN_LED, LOW);
+//		//interrupts();
+//	}
+//	// working version 20210320 - sends a number incremented
+//	//if (spikeout) {
+//	//	digitalWrite(PIN_LED, HIGH);
+//	//	spikeout = false;
+//	//	//noInterrupts();
+//	//	char radiopacket[4] = " ";
+//	//	itoa(packetnum++, radiopacket, 10);
+//	//	SerialUSB.print("Sending... "); SerialUSB.println(radiopacket);
+//	//	radiopacket[2] = 0;
+//
+//
+//	//	rf95.send((uint8_t*)radiopacket, 3);
+//	//	digitalWrite(PIN_LED, LOW);
+//	//	//interrupts();
+//	//}
+//
+//	//  SerialUSB.println("Waiting for packet to complete..."); delay(10);
+//	//  rf95.waitPacketSent();
+//	//  // Now wait for a reply
+//	//  uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+//	//  uint8_t len = sizeof(buf);
+//	//
+//	//  SerialUSB.println("Waiting for reply..."); delay(10);
+//	//  if (rf95.waitAvailableTimeout(1000))
+//	//  { 
+//	//    // Should be a reply message for us now   
+//	//    if (rf95.recv(buf, &len))
+//	//   {
+//	//      SerialUSB.print("Got reply: ");
+//	//      SerialUSB.println((char*)buf);
+//	//      SerialUSB.print("RSSI: ");
+//	//      SerialUSB.println(rf95.lastRssi(), DEC);    
+//	//    }
+//	//    else
+//	//    {
+//	//      SerialUSB.println("Receive failed");
+//	//    }
+//	//  }
+//	//  else
+//	//  {
+//	//    SerialUSB.println("No reply, is there a listener around?");
+//	//  }
+//	//  delay(1000);
+//
+//}
 
-void threshold_based_state_decoder() {
-
-
+int setDAC(float I) { 
+	return  (int)(I /600*1023);  // assume I is 0 to 600 (in case of playback),   
 }
 
-// classification using a hidden Markov model. 
-void continuous_HMM_state_decoder() {
+void rf_receive() {
+	if (rf95.available())
+	{
+		//SerialUSB.println("rf95 available");
+		// Should be a message for us now
+		uint8_t buf[1];
+		uint8_t len = sizeof(buf);
 
+		if (rf95.recv(buf, &len))
+		{
 
-}
+			//RH_RF95::printBuffer("Received: ", buf, len);// this one has a problem.
+			packetnum++;
 
-void rf_send() {
-	//SerialUSB.println("Sending to rf95_server");
- // Send a message to rf95_server
+			//SerialUSB.print("Got: ");
+			//      SerialUSB.print(packetnum);
+				 // SerialUSB.print(" ");
+			//SerialUSB.println((char*)buf);
+			//SerialUSB.print("RSSI: ");
+			//RSSI: receiver signal strength indicator. This number will range from about -15 to about -100. The larger the number (-15 being the highest you'll likely see) the stronger the signal.
+			//SerialUSB.println(rf95.lastRssi(), DEC);
 
+			////* trigger one-shot mode pulse * // 20210312 
+			//trigger_one_shot_pulse();
+			gyrodata = buf[0];
 
- // ** rf95.send() only when there is a spike.  **//
-	if (spikeout) {
-		digitalWrite(PIN_LED, HIGH);
-		spikeout = false;
-		//noInterrupts();
-		char radiopacket = '1';
-		//itoa(packetnum++, radiopacket, 10);
-		SerialUSB.print("Sending..... "); SerialUSB.println(radiopacket);
-		//radiopacket[0] = 0;
+			if (gyrodata > 15) {
+				digitalWrite(PIN_LED, HIGH);
+			}
+			else {
+				digitalWrite(PIN_LED, LOW);
+			}
 
+			//digitalWrite(PIN_PULSEOUT_TO_CWU, HIGH);
+			//delay(1);
 
-		rf95.send((uint8_t*)radiopacket, 1); 
-		digitalWrite(PIN_LED, LOW);
-		//interrupts();
+			// Send a reply
+	  //      uint8_t data[] = "And hello back to you";
+	  //      rf95.send(data, sizeof(data));
+	  //      rf95.waitPacketSent();
+	  //      SerialUSB.println("Sent a reply");
+		}
+		else
+		{
+
+			SerialUSB.println("Receive failed");
+
+		}
 	}
-	// working version 20210320 - sends a number incremented
-	//if (spikeout) {
-	//	digitalWrite(PIN_LED, HIGH);
-	//	spikeout = false;
-	//	//noInterrupts();
-	//	char radiopacket[4] = " ";
-	//	itoa(packetnum++, radiopacket, 10);
-	//	SerialUSB.print("Sending... "); SerialUSB.println(radiopacket);
-	//	radiopacket[2] = 0;
-
-
-	//	rf95.send((uint8_t*)radiopacket, 3);
-	//	digitalWrite(PIN_LED, LOW);
-	//	//interrupts();
-	//}
-
-	//  SerialUSB.println("Waiting for packet to complete..."); delay(10);
-	//  rf95.waitPacketSent();
-	//  // Now wait for a reply
-	//  uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-	//  uint8_t len = sizeof(buf);
-	//
-	//  SerialUSB.println("Waiting for reply..."); delay(10);
-	//  if (rf95.waitAvailableTimeout(1000))
-	//  { 
-	//    // Should be a reply message for us now   
-	//    if (rf95.recv(buf, &len))
-	//   {
-	//      SerialUSB.print("Got reply: ");
-	//      SerialUSB.println((char*)buf);
-	//      SerialUSB.print("RSSI: ");
-	//      SerialUSB.println(rf95.lastRssi(), DEC);    
-	//    }
-	//    else
-	//    {
-	//      SerialUSB.println("Receive failed");
-	//    }
-	//  }
-	//  else
-	//  {
-	//    SerialUSB.println("No reply, is there a listener around?");
-	//  }
-	//  delay(1000);
-
 }
 
 unsigned int time_us;
@@ -658,22 +557,20 @@ unsigned int playback_starttime;
 sensors_event_t event;  // L3GD30
 int gn = 0; // counter (gyro n)
 int gyro_scale;
-bool wired_mode = false; // default is wireless. 
-bool low_freq_during_idle = true; // default: idle state (stationary state) doesn't generate feedback. 
+
 
 void loop() {
 	time_us = micros();
-
 	gyro_scale = gyro_scale_orig;
+
+	
+
+
+	//gyro_scale *= gyro_scale_high_spike_train; // map to highter pulse frequency. 
 
 	// check system time in microseconds
 	//unsigned long currentMicros = micros() - startMicros;
 
-	if (!wired_mode) {
-		rf_send();
-	}
-
-	
 	// serial connection 
 	char command;
 	char commands[4];
@@ -683,7 +580,17 @@ void loop() {
 	if (ua > 0)
 	{
 		//std::vector <char> buffer(ua); 
-		command = SerialUSB.read();
+
+		//if the first byte = A: read 1 byte (command), B: read 2 bytes (uint16_t)
+		// AA, AB, AX... (same except the first char) 
+		// BCC, B5V, ....  (send the upper byte first)  
+		
+		//e.g.  uint16_t number = 5703;               // 0001 0110 0100 0111
+		//		uint16_t mask = B11111111;          // 0000 0000 1111 1111
+		//		uint8_t first_half = number >> 8;   // >>>> >>>> 0001 0110
+		//		uint8_t sencond_half = number & mask; // ____ ____ 0100 0111
+		
+		command = SerialUSB.read(); // read the first byte. 
 
 
 		//int rlen = SerialUSB.readBytes(commands, 4); //
@@ -698,25 +605,17 @@ void loop() {
 		//}
 		//else {// one letter commands
 
-
-		// transmission mode
-		if (command == 'V') {
-			// IZ Neuron encoding 
-			wired_mode = false;
-			SerialUSB.println(F("Transmission mode: Rf wireless"));
-		}
-		else if (command == 'W') {
-			// fixed rate encoding
-			wired_mode = true;
-			SerialUSB.println(F("Transmissoin mode: wired"));
-		}
-
-
-			// encoding mode setting 
+		// encoding mode setting 
 		if (command == 'A') {
 			// IZ Neuron encoding 
 			encoding_mode = "IZNeuron";
+
+			// turn off the FR mode if it was on.
+			TCC1->CTRLA.bit.ENABLE = 0;                     // Disable the TCC1 counter
+			while (TCC1->SYNCBUSY.bit.ENABLE);              // Wait for synchronization
+
 			SerialUSB.println(F("Encoding mode: IZN"));
+
 		}
 		else if (command == 'B') {
 			// fixed rate encoding
@@ -736,6 +635,7 @@ void loop() {
 		else if (command == 'Y') {
 			// playback mode
 			runmode = "playback";
+			cadence_mode = "stop";
 			SerialUSB.println(F("Run mode: playback"));
 		}
 		else {
@@ -745,13 +645,23 @@ void loop() {
 
 		// idle definitione
 		if (command == 'T') {
-			low_freq_during_idle = false;
-			SerialUSB.println(F("Idle: silent"));
+			exp3_mode = "MODE1_idle_silent";// low_freq_during_idle = false;
+			SerialUSB.println(F("MODE1_Idle: silent"));
 		}
 		else if (command == 'U') {
 			// fixed rate encoding
-			low_freq_during_idle = true;
-			SerialUSB.println(F("Idle: low freq"));
+			exp3_mode = "MODE2_idle_lowfreq_stim";  //low_freq_during_idle = true;
+			SerialUSB.println(F("MODE2_Idle: low freq"));
+		}
+		else if (command == 'V') {
+			/*encoding_mode = "fixedrate";  */
+			exp3_mode = "MODE3_idle_run_both_50hz";
+			SerialUSB.println(F("MODE3_Idle = run = 50Hz"));
+		}
+		else if (command == 'W') {
+			/*encoding_mode = "fixedrate";  */
+			exp3_mode = "MODE4_idle_200_run_300Hz";
+			SerialUSB.println(F("MODE3_Idle = run = 50Hz"));
 		}
 
 
@@ -761,247 +671,104 @@ void loop() {
 			switch (command) {
 			case 'C':
 				cadence_mode = "cad50";
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 
 			case 'D':    // swing2
 				cadence_mode = "cad60";
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 
 			case 'E':    // swing3
 				cadence_mode = "cad90";
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 
 			case 'F':    // swing4
 				cadence_mode = "cad50_k1"; // cad50_kick1st 
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 
 			case 'G':   // swing5
 				cadence_mode = "cad60_k1"; //// cad60_kick1st
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 			case 'H':   // swing6
 				cadence_mode = "cad50_k2"; // cad50_kick2nd 
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 			case 'I':   // swing7
 				cadence_mode = "cad60_k2"; // cad60_kick2nd 
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 			case 'J':   // swing8
 				cadence_mode = "cad50_tr"; // cad50_trip 
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 			case 'K':   // swing9
 				cadence_mode = "cad60_tr"; // cad60_Trip 
+				n = 0;
 				playback_starttime = micros();
-				gyro_scale *= playback_scale; // playback can have high frequency
 				break;
 			default:
 				SerialUSB.println(F("Cadence mode not defined")); //
 				break;
 			}
 		}
-
-		//if (command == 'A') {  // gyro
-		//	runmode = "gyro";
-		//}
-		//else if (command == 'B') { // fixed rate
-		//	runmode = "fixedrate";
-		//}
-		//else if (command == 'C') { // swing 1
-		//	runmode = "cad50";
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-		//}
-		//else if (command == 'D') {   // swing2
-		//	runmode = "cad60";  
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else if (command == 'E') {   // swing3
-		//	runmode = "cad90";
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else if (command == 'F') {   // swing4
-		//	runmode = "cad50_k1"; // cad50_kick1st 
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else if (command == 'G') {   // swing5
-		//	runmode = "cad60_k1"; //// cad60_kick1st
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else if (command == 'H') {   // swing6
-		//	runmode = "cad50_k2"; // cad50_kick2nd 
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else if (command == 'I') {   // swing7
-		//	runmode = "cad60_k2"; // cad60_kick2nd 
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else if (command == 'J') {   // swing8
-		//	runmode = "cad50_tr"; // cad50_trip 
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else if (command == 'K') {   // swing9
-		//	runmode = "cad60_tr"; // cad60_Trip 
-		//	playback_starttime = micros();
-		//	gyro_scale *= 1; // playback can have high frequency
-
-		//}
-		//else { //
-		//	SerialUSB.println("Wrong serial command"); //
-
-
-		//}
-		
 	}
 	//SerialUSB.println(size_of_array); //
 
 
 	if (runmode == "live") { // live or playback mode. 
-
-#if IS_BNO055
-
-		/* Get a new sensor event */
-		sensors_event_t event;
-		bno.getEvent(&event);
-		imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
-
-		/* Display the floating point data */
-		//SerialUSB.print("X: ");
-		//SerialUSB.print(event.orientation.x, 4);
-		//SerialUSB.print(gyro.x());
-		//SerialUSB.print("\tY: ");
-		//SerialUSB.print(event.orientation.y, 4);
-		//SerialUSB.print(gyro.y());
-		//SerialUSB.print("\tZ: ");
-		//SerialUSB.print(event.orientation.z, 4);
-		//SerialUSB.print(gyro.z());
-
-		I_Synapse1 = int(gyro.y() * gyro_scale);
-#endif
-#if IS_L3GD20
-
-		/* Get a new sensor event */
-		gyro1.getEvent(&event);// takes most of the delay (almost 1ms!)  Must try MPU6050? 8Khz? 
+		rf_receive(); // gyrodata gets updated...
+		SerialUSB.print("reception test: ");
+		//SerialUSB.println(gyrodata, DEC);
 
 
+		I_Synapse1 = (float) gyrodata  * gyro_live_factor; //  this gyrodata is uint8_t
 
-
-	//sensors_event_t event2;
-	//gyro2.getEvent(&event2);
-
-	/* Display the results (speed is measured in rad/s) */
-	//SerialUSB.print("X1: "); SerialUSB.print(event.gyro.x); SerialUSB.print("  ");
-	//SerialUSB.print("Y1: "); SerialUSB.print(event.gyro.y); SerialUSB.print("  ");
-	//SerialUSB.print("Z1: "); SerialUSB.print(event.gyro.z); SerialUSB.print("  ");
-
-	//SerialUSB.print("X2: "); SerialUSB.print(event2.gyro.x); SerialUSB.print("  ");
-	//SerialUSB.print("Y2: "); SerialUSB.print(event2.gyro.y); SerialUSB.print("  ");
-	//SerialUSB.print("Z2: "); SerialUSB.print(event2.gyro.z); SerialUSB.print("  ");
-	//SerialUSB.println("rad/s ");
-	 // L3GD30 adjustment
-		//SerialUSB.println(event.gyro.z); // this slows by 300us - but need this in swing data recording.
-		//SerialUSB.print(",");
-		
-		I_Synapse1 = event.gyro.z * gyro_scale  ; // cheap
-#endif
-
-#if IS_MPU6050
-		//accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-		accelgyro.getRotation(&gx, &gy, &gz);
-		//I_Synapse1 = int(gz * gyro_scale); // cheap
-		I_Synapse1 = gz * gyro_scale; // cheap
-#endif
-
-#if IS_MPU6050_raw
-		Wire.beginTransmission(MPU);
-		Wire.write(0x45); // Gyro data first register address 0x43
-		Wire.endTransmission(false);
-		Wire.requestFrom(MPU, 2, true); // Read 4 registers total, each axis value is stored in 2 registers
-		//GyroX = (Wire.read() << 8 | Wire.read()) / 131.0; // For a 250deg/s range we have to divide first the raw value by 131.0, according to the datasheet
-	   // GyroY = (Wire.read() << 8 | Wire.read()) / 131.0;
-		GyroZ = (Wire.read() << 8 | Wire.read()) / 131.0;
-		// Correct the outputs with the calculated error values
-		//GyroX = GyroX + 0.56; // GyroErrorX ~(-0.56)
-		//GyroY = GyroY - 2; // GyroErrorY ~(2)
-		GyroZ = GyroZ + 0.79; // GyroErrorZ ~ (-0.8)
-
-
-		I_Synapse1 = GyroZ * gyro_scale; // cheap
 		SerialUSB.println(I_Synapse1);
-
-#endif
-
-#ifdef OUTPUT_READABLE_ACCELGYRO
-// display tab-separated accel/gyro x/y/z values
-		//SerialUSB.print("a/g:\t");
-		//SerialUSB.print(ax); SerialUSB.print("\t");
-		//SerialUSB.print(ay); SerialUSB.print("\t");
-		//SerialUSB.print(az); SerialUSB.print("\t");
-		//SerialUSB.print(gx); SerialUSB.print("\t");
-		//SerialUSB.print(gy); SerialUSB.print("\t");
-		SerialUSB.println(gz);
-#endif
-
-
-		//SerialUSB.print(I_Synapse1);
 		//SerialUSB.print(",");
 	} // end of realtime mode
 	else if (runmode == "playback") {
-		gyro_scale *= 2; // increase the rate in the playback mode when the bottle neck from RFM is removed.
-						// instead of max 130Hz if live mode, this can go up to 300 Hz (or more). 
+		int upsample_factor = 4; // since 1khz gyro is downsampled to 130Hz due to RFM,  upsample back.
 
+		//gyro_scale *= 2; // increase the rate in the playback mode when the bottle neck from RFM is removed.
+		//				// instead of max 130Hz if live mode, this can go up to 300 Hz (or more). 
 		if (cadence_mode == "stop") { // do nothing 
-			I_Synapse1 = 0;
+			n = 0;
+
+
 		}
 		else if (cadence_mode == "cad50") { // swing 1
 			// load one value per loop.
-
-			sensor_playback = cad50_1swing_max2p5[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad50_1swing_max2p5) / sizeof(int) - 1) {
+			int m = floor(n / upsample_factor);
+			sensor_playback = bellshape_swing_level1[m];
+			sensor_playback = sensor_playback * 0.8; // 1 * 0.8 = 0.8
+			if (n == sizeof(bellshape_swing_level1)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
 				SerialUSB.println(micros() - playback_starttime);
 			}
 			n = n + 1;
-
 		}
 		else if (cadence_mode == "cad60") { // swing 2
 		   // load one value per loop.
+			int m = floor(n / upsample_factor);
+			sensor_playback = bellshape_swing_level2[m];
+			sensor_playback = sensor_playback * 0.65;  // 2 * 0.65 = 1.3
 
-			sensor_playback = cad60_1swing_max4p2[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad60_1swing_max4p2) / sizeof(int) - 1) {
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(bellshape_swing_level2)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1011,11 +778,12 @@ void loop() {
 		}
 		else if (cadence_mode == "cad90") { // swing 3
 	// load one value per loop.
+			int m = floor(n / upsample_factor);
+			sensor_playback = bellshape_swing_level3[m];
+			sensor_playback = sensor_playback * 1.8;   //3*1.8 = 5.4
 
-			sensor_playback = cad90_1swing_max5p3[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad90_1swing_max5p3) / sizeof(int) - 1) {
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(bellshape_swing_level3)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1025,11 +793,10 @@ void loop() {
 		}
 		else if (cadence_mode == "cad50_k1") { // swing 4
 			// load one value per loop.
-
-			sensor_playback = cad50_kick1st_1swing_max3p7[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad50_kick1st_1swing_max3p7) / sizeof(int) - 1) {
+			int m = floor(n / upsample_factor);
+			sensor_playback = cad50_kick1st_1swing_max3p7[m];
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(cad50_kick1st_1swing_max3p7)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1039,11 +806,11 @@ void loop() {
 		}
 		else if (cadence_mode == "cad60_k1") { // swing 5
 			// load one value per loop.
+			int m = floor(n / upsample_factor);
 
-			sensor_playback = cad60_kick1st_1swing_max4p6[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad60_kick1st_1swing_max4p6) / sizeof(int) - 1) {
+			sensor_playback = cad60_kick1st_1swing_max4p6[m];
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(cad60_kick1st_1swing_max4p6)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1053,11 +820,13 @@ void loop() {
 		}
 		else if (cadence_mode == "cad50_k2") { // swing 6
 			// load one value per loop.
+			int m = floor(n / upsample_factor);
 
-			sensor_playback = cad50_kick2nd_1swing_max6p1[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad50_kick2nd_1swing_max6p1) / sizeof(int) - 1) {
+			sensor_playback = cad50_kick2nd_1swing_max6p1[m];
+			sensor_playback = sensor_playback * 1.4;
+
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(cad50_kick2nd_1swing_max6p1)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1067,11 +836,13 @@ void loop() {
 		}
 		else if (cadence_mode == "cad60_k2") { // swing 7
 			// load one value per loop.
+			int m = floor(n / upsample_factor);
 
-			sensor_playback = cad60_kick2nd_1swing_max7p3[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad60_kick2nd_1swing_max7p3) / sizeof(int) - 1) {
+			sensor_playback = cad60_kick2nd_1swing_max7p3[m];
+			sensor_playback = sensor_playback * 1.4;
+
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(cad60_kick2nd_1swing_max7p3)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1081,11 +852,15 @@ void loop() {
 		}
 		else if (cadence_mode == "cad50_tr") { // swing 8
 			// load one value per loop.
+			int m = floor(n / upsample_factor);
 
-			sensor_playback = cad50_trip_1swing_max3p8[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad50_trip_1swing_max3p8) / sizeof(int) - 1) {
+			sensor_playback = cad50_trip_1swing_max3p8[m];
+			sensor_playback = sensor_playback + 0.28; // manual calibraion
+
+			sensor_playback = sensor_playback * 1.2;
+
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(cad50_trip_1swing_max3p8)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1095,11 +870,14 @@ void loop() {
 		}
 		else if (cadence_mode == "cad60_tr") { // swing 9
 			// load one value per loop.
+			int m = floor(n / upsample_factor);
 
-			sensor_playback = cad60_trip_1swing_max3p6[n];
-			SerialUSB.println(sensor_playback);
-			I_Synapse1 = sensor_playback * gyro_scale;
-			if (n == sizeof(cad60_trip_1swing_max3p6) / sizeof(int) - 1) {
+			sensor_playback = cad60_trip_1swing_max3p6[m];
+			sensor_playback = sensor_playback + 0.28; // manual calibraion
+			sensor_playback = sensor_playback * 1.2;
+
+			//I_Synapse1 = sensor_playback * gyro_scale;
+			if (n == sizeof(cad60_trip_1swing_max3p6) * upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
 				SerialUSB.print("Elapsed time: ");
@@ -1109,19 +887,37 @@ void loop() {
 		}
 		else {
 			SerialUSB.println("cadence_mode not found");
-			SerialUSB.print("Elapsed time: ");
-			SerialUSB.println(micros() - playback_starttime);
+			/*SerialUSB.print("Elapsed time: ");
+			SerialUSB.println(micros() - playback_starttime);*/
 
 		}
-	}
-	//I_Synapse2 = int(event2.gyro.y * gyro_scale);
 
-	/*SerialUSB.print("I1: "); SerialUSB.print(I_Synapse1); SerialUSB.print("  ");
-	SerialUSB.print("I2: "); SerialUSB.print(I_Synapse2); SerialUSB.print("  ");
-	SerialUSB.println(" AU ");*/
-//#endif
+		gyro_scale *= playback_scale;
+
+		if (cadence_mode == "stop") { // do nothing 
+			I_Synapse1 = 0;
+			SerialUSB.println(I_Synapse1);
+		}
+		else {
+			// from here the same process as in the gyro_sender but the gyro data is float (recorded in MArch 2021)
+			float pos_gyro_z = sensor_playback + 0.28; // manual calibraion
+			pos_gyro_z = (pos_gyro_z > 0) ? pos_gyro_z : 0; // need to calubrate
+			//gyrodata = (pos_gyro_z * gyro_scale); // TODO:  convert to uint8_t.  event.gyro.z ranges from -10 to 10 ish.  offset: -0.56.
+			//gyrodata = (gyrodata > 255) ? 255 : gyrodata; // make sure the range is 8 bit.
+			I_Synapse1 = (pos_gyro_z * gyro_scale) * 1;// gyro_scale_high_spike_train; // for higher spike rate
+			SerialUSB.println(I_Synapse1);
+		}
+
+
+
+	} // end of playback
+
 
 	I_Synapse1 = (I_Synapse1 > 0) ? I_Synapse1 : 0;  // positive flextion only.
+
+
+	analogWrite(A0, setDAC(I_Synapse1));
+
 
 	if (encoding_mode == "IZNeuron") { // the same for live and playback mode. 
 
@@ -1203,20 +999,20 @@ void loop() {
 		v = v + timestep_ms * (0.04 * v * v + 5 * v + 140 - u + I_total);
 		u = u + timestep_ms * (Array_a[NeuronBehaviour] * (Array_b[NeuronBehaviour] * v - u));
 
-		if (wired_mode) {
-			digitalWrite(PIN_LED, LOW);
-		}
+		//if (wired_mode) {
+		//	digitalWrite(PIN_LED, LOW);
+		//}
 
 		 if (v >= 30.0) {  // typical IZ Neuron 
 			v = Array_c[NeuronBehaviour];
 			u += Array_d[NeuronBehaviour];
 			//digitalWrite(PIN_NEURON1, HIGH);
 			//SerialUSB.println("\tspike 1");
-			spikeout = true;
+			//spikeout = true;
 	
-			if (wired_mode) {
-				digitalWrite(PIN_LED, HIGH);
-			}
+			//if (wired_mode) {
+			//	digitalWrite(PIN_LED, HIGH);
+			//}
 
 			// the following works for thin pulse out.  
 			TCC0->CTRLBSET.reg = TCC_CTRLBSET_CMD_RETRIGGER;         // Retrigger the timer's One/Multi-Shot pulse
@@ -1238,59 +1034,41 @@ void loop() {
 		//if (I_Synapse1 > 50) {
 
 		//if (event.gyro.z > 1.0) { // if swing speed above certain threshold... fire constant rate.
-		SerialUSB.println(I_Synapse1);
-		if (I_Synapse1 >  0.4* gyro_scale) {// low enough threshold. 
-			spikeout = true;
-			// HERE, if playback: turn on the fixed_rate_pulse_out UNTIL the playback ended. If live, on until stop commanded.
-			TCC1->PER.reg = tcc1_per;//    f = 48M / 8 / 60000 =  100Hz                       
-			while (TCC1->SYNCBUSY.bit.PER);                  // Wait for synchronization
+		//SerialUSB.print("FR Mode: ");
+		//SerialUSB.println(I_Synapse1);
+		delayMicroseconds(70); // to match the playback speed between IZN and FR.
+		float FR_threshold = 0.3;
 
-			if (runmode == "live") { // fixed rate in live mode requires controlling the frequency with delay. // in playback mode, wired speed can be as high as 1KHz if needed.
-				delay(11); // change the delay to vary the frequency < 130hz in live mode. e.g. 7ms: 118Hz. 8ms: 106Hz, 9ms: 96Hz  10ms: 88Hz,  11ms: 80Hz. 13ms: 70Hz,  15ms: 61Hz.  18ms: 50Hz. 
+		if (exp3_mode == "MODE3_idle_run_both_50hz") {
+			configureTCC1_rate(50);
+		}
+		else if (exp3_mode == "MODE2_idle_lowfreq_stim") {
+			if (I_Synapse1 > FR_threshold* gyro_scale) {
+				configureTCC1_rate(200);
 			}
-
-			TCC1->CTRLA.bit.ENABLE = 1;                     // enable the TCC1 counter
-			while (TCC1->SYNCBUSY.bit.ENABLE);              // Wait for synchronizatio
-			
-		
-			if (wired_mode) {
-				// the following works for thin pulse out.  
-				//TCC0->CTRLBSET.reg = TCC_CTRLBSET_CMD_RETRIGGER;         // Retrigger the timer's One/Multi-Shot pulse
-				//while (TCC0->SYNCBUSY.bit.CTRLB);                        // Wait for synchronization
-				digitalWrite(PIN_LED, HIGH);
-				spikeout = false;
+			else {
+				configureTCC1_rate(25);
 			}
 		}
-		else {
-			if (low_freq_during_idle) { //low frequency stimulation during idle for EXP3. Make a button?
-				spikeout = true;
-				if (runmode == "live") { 
-					delay(48); // change the delay to vary the frequency < 130hz in live mode. e.g. 7ms: 118Hz. 8ms: 106Hz,9ms: 96Hz 10ms: 88Hz,  11ms: 80Hz. 13ms: 70Hz, 15ms: 61Hz.  19ms: 50Hz. 32ms:30Hz, 48ms: 20Hz.   96ms: 10.2z
-				}
-
-				TCC1->PER.reg = tcc1_idle_per;  //  f = 48M / 8 / 300000 = 20Hz                          
-				while (TCC1->SYNCBUSY.bit.PER);                  // Wait for synchronization
-
-				TCC1->CTRLA.bit.ENABLE = 1;                     // enable the TCC1 counter
-				while (TCC1->SYNCBUSY.bit.ENABLE);              // Wait for synchronizatio
+		else if (exp3_mode == "MODE4_idle_200_run_300Hz") {
+			if (I_Synapse1 > FR_threshold* gyro_scale) {
+				configureTCC1_rate(300);
 			}
-			else {  // no spiking during idle (original) 
+			else {
+				configureTCC1_rate(200);
+			}
+		}
+		else { // MODE1 (idle silent)
+			if (I_Synapse1 > FR_threshold* gyro_scale) {
+				configureTCC1_rate(200);
+			}
+			else {
 				TCC1->CTRLA.bit.ENABLE = 0;                     // Disable the TCC1 counter
 				while (TCC1->SYNCBUSY.bit.ENABLE);              // Wait for synchronizatio
-
-				if (wired_mode) {
-					digitalWrite(PIN_LED, LOW);
-				}
 			}
-			
 		}
 
-
-		//if (runmode == "live")
-		//	delay(12); // delay(10): 95-100H. delay(12) ~ 75Hz. works in live mode) 
-		//else // playback
-		//	delay(1); // ok so this work to generate 75Hz but overall playaback slowed down too much. 
-	}
+	} // end of fixed rate mode
 	
 #endif
 	//second_gyro();
@@ -1338,9 +1116,9 @@ void loop() {
 
 
 	/* Wait the specified delay before requesting next data  (sensor) */
-	if (runmode == "playback") {
-		delay(2); // control this for playing pre-recorded swing data. 
-	}
+	//if (runmode == "playback") {
+	//	delay(3); // control this for playing pre-recorded swing data. 
+	//}
 	
 
 	
@@ -1382,6 +1160,18 @@ void loop() {
 //}
 //
 
+
+// configure TCC1 pulse frequency 
+
+void configureTCC1_rate(int pulse_frequency) {
+	int temp_tcc1_per = 48000000 / 8 / pulse_frequency;
+
+	TCC1->PERB.reg = temp_tcc1_per;  //  f = 48M / 8 / 150000 = 40Hz                          
+	while (TCC1->SYNCBUSY.bit.PERB);                  // Wait for synchronization
+
+	TCC1->CTRLA.bit.ENABLE = 1;                     // enable the TCC1 counter
+	while (TCC1->SYNCBUSY.bit.ENABLE);              // Wait for synchronizatio
+}
 
 void rf95_setup() {
 
@@ -1522,19 +1312,6 @@ void rf95_setup() {
 
 }
 
-// One shot pulse (spike kernal)
-void interrupt_pulsegen_pulsein()
-{
-	if (TCC0->STATUS.bit.STOP)                                 // Check if the previous pulse is complete
-	{
-		//one shot is irrelevant? 
-		
-		// count restarts...
-		//TCC0->CTRLBSET.reg = TCC_CTRLBSET_CMD_RETRIGGER;         // Retrigger the timer's One/Multi-Shot pulse
-		//while (TCC0->SYNCBUSY.bit.CTRLB);                        // Wait for synchronization
-	}
-
-}
 
 
 void oneshot_TCC0_thinPulse_setup() { // ONE_SHOT 
@@ -1553,11 +1330,22 @@ void oneshot_TCC0_thinPulse_setup() { // ONE_SHOT
 	//*** Using direct port and pin numbers *******
 	// TO test muxing in samd21. (may discard, works.)
 
-	PORT->Group[g_APinDescription[PIN_THIN_PULSEOUT].ulPort].PINCFG[g_APinDescription[PIN_THIN_PULSEOUT].ulPin].bit.PMUXEN = 1;
+	// FROM: RFM_relay
+	PORT->Group[g_APinDescription[PIN_PULSEOUT_TO_CWU].ulPort].PINCFG[g_APinDescription[PIN_PULSEOUT_TO_CWU].ulPin].bit.PMUXEN = 1;
 
 	// Connect the TCC timers to the port outputs - port pins are paired odd PMUO and even PMUXE
 	// F & E specify the timers: TCC0, TCC1 and TCC2
-	PORT->Group[g_APinDescription[PIN_THIN_PULSEOUT].ulPort].PMUX[g_APinDescription[PIN_THIN_PULSEOUT].ulPin >> 1].bit.PMUXE = PORT_PMUX_PMUXE_F_Val; //PA16, TCC0-WO6 (CC[2])
+	PORT->Group[g_APinDescription[PIN_PULSEOUT_TO_CWU].ulPort].PMUX[g_APinDescription[PIN_PULSEOUT_TO_CWU].ulPin >> 1].bit.PMUXE = PORT_PMUX_PMUXE_F_Val; //PA18, TCC0-WO2 (CC[2]),  (PA16, TCC0-WO6 (CC[2]))
+	// END of 'FROM: RFM_relay'
+
+
+
+	//***  pin 11 (PA16) pin broken for this RFM_relay feather board. *** //
+	//PORT->Group[g_APinDescription[PIN_THIN_PULSEOUT].ulPort].PINCFG[g_APinDescription[PIN_THIN_PULSEOUT].ulPin].bit.PMUXEN = 1;
+
+	//// Connect the TCC timers to the port outputs - port pins are paired odd PMUO and even PMUXE
+	//// F & E specify the timers: TCC0, TCC1 and TCC2
+	//PORT->Group[g_APinDescription[PIN_THIN_PULSEOUT].ulPort].PMUX[g_APinDescription[PIN_THIN_PULSEOUT].ulPin >> 1].bit.PMUXE = PORT_PMUX_PMUXE_F_Val; //PA16, TCC0-WO6 (CC[2])
 
 
 // Feed GCLK4 to TCC0 and TCC1
@@ -1570,9 +1358,9 @@ void oneshot_TCC0_thinPulse_setup() { // ONE_SHOT
 	TCC0->WAVE.reg = TCC_WAVE_WAVEGEN_NPWM;          // Single slope PWM operation     
 	while (TCC0->SYNCBUSY.bit.WAVE);                 // Wait for synchronization
 
-	TCC0->PER.reg = 10000;//                          z
-	while (TCC0->SYNCBUSY.bit.PER);                  // Wait for synchronization
-	TCC0->CC[2].reg = 5000;
+	TCC0->PERB.reg = 30000;//                          z
+	while (TCC0->SYNCBUSY.bit.PERB);                  // Wait for synchronization
+	TCC0->CC[2].reg = 1500;
 	while (TCC0->SYNCBUSY.bit.CC2);
 
 	//REG_TCC0_INTFLAG |= TCC_INTFLAG_OVF | TCC_INTFLAG_MC0 | TCC_INTFLAG_MC1;              // Clear the overflow interrupt flag
@@ -1583,7 +1371,8 @@ void oneshot_TCC0_thinPulse_setup() { // ONE_SHOT
 	//last_cmd = TCC_CTRLBSET_DIR;
 	while (TCC0->SYNCBUSY.bit.CTRLB);                 // Wait for synchronization
 
-	TCC0->DRVCTRL.reg |= TCC_DRVCTRL_NRE6;
+	//TCC0->DRVCTRL.reg |= TCC_DRVCTRL_NRE6;
+	TCC0->DRVCTRL.reg |= TCC_DRVCTRL_NRE2; // for PA18 (pin 10) 
 
 
 
@@ -1617,11 +1406,11 @@ void fixed_rate_pulse_out_setup() {
 	//*** Using direct port and pin numbers *******
 	// TO test muxing in samd21. (may discard, works.)
 
-	PORT->Group[g_APinDescription[PIN_PA07].ulPort].PINCFG[g_APinDescription[PIN_PA07].ulPin].bit.PMUXEN = 1;
+	PORT->Group[g_APinDescription[PIN_FR].ulPort].PINCFG[g_APinDescription[PIN_FR].ulPin].bit.PMUXEN = 1;
 
 	// Connect the TCC timers to the port outputs - port pins are paired odd PMUO and even PMUXE
 	// F & E specify the timers: TCC0, TCC1 and TCC2
-	PORT->Group[g_APinDescription[PIN_PA07].ulPort].PMUX[g_APinDescription[PIN_PA07].ulPin >> 1].bit.PMUXO = PORT_PMUX_PMUXO_E_Val; //PA07, TCC1/WO[1]
+	PORT->Group[g_APinDescription[PIN_FR].ulPort].PMUX[g_APinDescription[PIN_FR].ulPin >> 1].bit.PMUXO = PORT_PMUX_PMUXO_E_Val; //PA07, TCC1/WO[1]
 
 
 //// Feed GCLK4 to TCC0 and TCC1
@@ -1657,6 +1446,17 @@ void fixed_rate_pulse_out_setup() {
 
 	SerialUSB.println("TCC1 for pulseout setting completed.");
 }
+
+
+
+// Fixed Rate (FR)  EIC trigger
+void interrupt_pulsegen_FR()
+{
+	// the following works for thin pulse out.  
+	TCC0->CTRLBSET.reg = TCC_CTRLBSET_CMD_RETRIGGER;         // Retrigger the timer's One/Multi-Shot pulse
+	while (TCC0->SYNCBUSY.bit.CTRLB);                        // Wait for synchronization
+}
+
 
 
 

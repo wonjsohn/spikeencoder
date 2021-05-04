@@ -49,16 +49,14 @@
             this.playback_radioButton = new System.Windows.Forms.RadioButton();
             this.live_radioButton = new System.Windows.Forms.RadioButton();
             this.label4 = new System.Windows.Forms.Label();
-            this.groupBox2 = new System.Windows.Forms.GroupBox();
-            this.wireout_radioButton = new System.Windows.Forms.RadioButton();
-            this.rmwireless_radioButton = new System.Windows.Forms.RadioButton();
             this.idle_definition_groupBox = new System.Windows.Forms.GroupBox();
+            this.idle_run_both50hz_radioButton = new System.Windows.Forms.RadioButton();
             this.idle_lowfreq_radioButton = new System.Windows.Forms.RadioButton();
             this.idle_silent_radioButton = new System.Windows.Forms.RadioButton();
+            this.idle200_run300_radioButton = new System.Windows.Forms.RadioButton();
             this.groupBox1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.fixedrate_Hz)).BeginInit();
             this.runmode_groupBox.SuspendLayout();
-            this.groupBox2.SuspendLayout();
             this.idle_definition_groupBox.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -199,9 +197,9 @@
             this.groupBox1.Controls.Add(this.fixedrate_radioButton);
             this.groupBox1.Controls.Add(this.IZNeuron_radiobutton);
             this.groupBox1.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.groupBox1.Location = new System.Drawing.Point(23, 129);
+            this.groupBox1.Location = new System.Drawing.Point(12, 12);
             this.groupBox1.Name = "groupBox1";
-            this.groupBox1.Size = new System.Drawing.Size(309, 111);
+            this.groupBox1.Size = new System.Drawing.Size(322, 111);
             this.groupBox1.TabIndex = 16;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "Encoding Mode";
@@ -264,9 +262,9 @@
             this.runmode_groupBox.Controls.Add(this.playback_radioButton);
             this.runmode_groupBox.Controls.Add(this.live_radioButton);
             this.runmode_groupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.runmode_groupBox.Location = new System.Drawing.Point(23, 246);
+            this.runmode_groupBox.Location = new System.Drawing.Point(12, 129);
             this.runmode_groupBox.Name = "runmode_groupBox";
-            this.runmode_groupBox.Size = new System.Drawing.Size(309, 100);
+            this.runmode_groupBox.Size = new System.Drawing.Size(322, 100);
             this.runmode_groupBox.TabIndex = 17;
             this.runmode_groupBox.TabStop = false;
             this.runmode_groupBox.Text = "Run Mode";
@@ -306,55 +304,33 @@
             this.label4.TabIndex = 18;
             this.label4.Text = "* Pause (3s) between the clicks. ";
             // 
-            // groupBox2
-            // 
-            this.groupBox2.BackColor = System.Drawing.SystemColors.Info;
-            this.groupBox2.Controls.Add(this.wireout_radioButton);
-            this.groupBox2.Controls.Add(this.rmwireless_radioButton);
-            this.groupBox2.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.groupBox2.Location = new System.Drawing.Point(23, 12);
-            this.groupBox2.Name = "groupBox2";
-            this.groupBox2.Size = new System.Drawing.Size(309, 111);
-            this.groupBox2.TabIndex = 19;
-            this.groupBox2.TabStop = false;
-            this.groupBox2.Text = "Transmission Mode";
-            // 
-            // wireout_radioButton
-            // 
-            this.wireout_radioButton.AutoSize = true;
-            this.wireout_radioButton.Location = new System.Drawing.Point(21, 70);
-            this.wireout_radioButton.Name = "wireout_radioButton";
-            this.wireout_radioButton.Size = new System.Drawing.Size(269, 29);
-            this.wireout_radioButton.TabIndex = 1;
-            this.wireout_radioButton.Text = "W. Wired Out (pin 11, 9)";
-            this.wireout_radioButton.UseVisualStyleBackColor = true;
-            this.wireout_radioButton.CheckedChanged += new System.EventHandler(this.wireout_radioButton_CheckedChanged);
-            // 
-            // rmwireless_radioButton
-            // 
-            this.rmwireless_radioButton.AutoSize = true;
-            this.rmwireless_radioButton.Checked = true;
-            this.rmwireless_radioButton.Location = new System.Drawing.Point(21, 31);
-            this.rmwireless_radioButton.Name = "rmwireless_radioButton";
-            this.rmwireless_radioButton.Size = new System.Drawing.Size(274, 29);
-            this.rmwireless_radioButton.TabIndex = 0;
-            this.rmwireless_radioButton.TabStop = true;
-            this.rmwireless_radioButton.Text = "V. RF Wireless (<130Hz)";
-            this.rmwireless_radioButton.UseVisualStyleBackColor = true;
-            this.rmwireless_radioButton.CheckedChanged += new System.EventHandler(this.rmwireless_radioButton_CheckedChanged);
-            // 
             // idle_definition_groupBox
             // 
             this.idle_definition_groupBox.BackColor = System.Drawing.SystemColors.Highlight;
+            this.idle_definition_groupBox.Controls.Add(this.idle200_run300_radioButton);
+            this.idle_definition_groupBox.Controls.Add(this.idle_run_both50hz_radioButton);
             this.idle_definition_groupBox.Controls.Add(this.idle_lowfreq_radioButton);
             this.idle_definition_groupBox.Controls.Add(this.idle_silent_radioButton);
             this.idle_definition_groupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.idle_definition_groupBox.Location = new System.Drawing.Point(23, 352);
+            this.idle_definition_groupBox.Location = new System.Drawing.Point(12, 235);
             this.idle_definition_groupBox.Name = "idle_definition_groupBox";
-            this.idle_definition_groupBox.Size = new System.Drawing.Size(309, 100);
+            this.idle_definition_groupBox.Size = new System.Drawing.Size(322, 197);
             this.idle_definition_groupBox.TabIndex = 18;
             this.idle_definition_groupBox.TabStop = false;
             this.idle_definition_groupBox.Text = "EXP3. Idle definition";
+            this.idle_definition_groupBox.Enter += new System.EventHandler(this.idle_definition_groupBox_Enter);
+            // 
+            // idle_run_both50hz_radioButton
+            // 
+            this.idle_run_both50hz_radioButton.AutoSize = true;
+            this.idle_run_both50hz_radioButton.ForeColor = System.Drawing.SystemColors.ControlText;
+            this.idle_run_both50hz_radioButton.Location = new System.Drawing.Point(21, 106);
+            this.idle_run_both50hz_radioButton.Name = "idle_run_both50hz_radioButton";
+            this.idle_run_both50hz_radioButton.Size = new System.Drawing.Size(309, 29);
+            this.idle_run_both50hz_radioButton.TabIndex = 2;
+            this.idle_run_both50hz_radioButton.Text = "V. Idle=run (50Hz) (adjust I) ";
+            this.idle_run_both50hz_radioButton.UseVisualStyleBackColor = true;
+            this.idle_run_both50hz_radioButton.CheckedChanged += new System.EventHandler(this.idle_run_both50hz_radioButton_CheckedChanged);
             // 
             // idle_lowfreq_radioButton
             // 
@@ -381,13 +357,24 @@
             this.idle_silent_radioButton.UseVisualStyleBackColor = true;
             this.idle_silent_radioButton.CheckedChanged += new System.EventHandler(this.idle_silent_radioButton_CheckedChanged);
             // 
+            // idle200_run300_radioButton
+            // 
+            this.idle200_run300_radioButton.AutoSize = true;
+            this.idle200_run300_radioButton.ForeColor = System.Drawing.SystemColors.ControlText;
+            this.idle200_run300_radioButton.Location = new System.Drawing.Point(21, 150);
+            this.idle200_run300_radioButton.Name = "idle200_run300_radioButton";
+            this.idle200_run300_radioButton.Size = new System.Drawing.Size(286, 29);
+            this.idle200_run300_radioButton.TabIndex = 3;
+            this.idle200_run300_radioButton.Text = "W. Idle 200Hz,run 300Hz  ";
+            this.idle200_run300_radioButton.UseVisualStyleBackColor = true;
+            this.idle200_run300_radioButton.CheckedChanged += new System.EventHandler(this.idle200_run300_radioButton_CheckedChanged);
+            // 
             // EncoderFaceForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1051, 458);
+            this.ClientSize = new System.Drawing.Size(1051, 444);
             this.Controls.Add(this.idle_definition_groupBox);
-            this.Controls.Add(this.groupBox2);
             this.Controls.Add(this.label4);
             this.Controls.Add(this.runmode_groupBox);
             this.Controls.Add(this.groupBox1);
@@ -412,8 +399,6 @@
             ((System.ComponentModel.ISupportInitialize)(this.fixedrate_Hz)).EndInit();
             this.runmode_groupBox.ResumeLayout(false);
             this.runmode_groupBox.PerformLayout();
-            this.groupBox2.ResumeLayout(false);
-            this.groupBox2.PerformLayout();
             this.idle_definition_groupBox.ResumeLayout(false);
             this.idle_definition_groupBox.PerformLayout();
             this.ResumeLayout(false);
@@ -443,12 +428,11 @@
         private System.Windows.Forms.RadioButton live_radioButton;
         private System.Windows.Forms.NumericUpDown fixedrate_Hz;
         private System.Windows.Forms.Label label4;
-        private System.Windows.Forms.GroupBox groupBox2;
-        private System.Windows.Forms.RadioButton wireout_radioButton;
-        private System.Windows.Forms.RadioButton rmwireless_radioButton;
         private System.Windows.Forms.GroupBox idle_definition_groupBox;
         private System.Windows.Forms.RadioButton idle_lowfreq_radioButton;
         private System.Windows.Forms.RadioButton idle_silent_radioButton;
+        private System.Windows.Forms.RadioButton idle_run_both50hz_radioButton;
+        private System.Windows.Forms.RadioButton idle200_run300_radioButton;
     }
 }
 
