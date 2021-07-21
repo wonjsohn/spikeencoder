@@ -232,6 +232,8 @@ int  n = 0;
 
 
 uint8_t gyrodata = 0;  // 8 bit encoded gyro data... 
+uint8_t gyro_source = 0;  // 0: left leg, 1: right leg
+//uint8_t gyro_sign = 0; // 
 String device_mode = "on";
 boolean forward_swing = false;
 ////////////////////////////////////////////////////////////////////////////
@@ -396,9 +398,11 @@ void rf_send() {
 		digitalWrite(PIN_LED, HIGH);
 	}
 	//noInterrupts();
-	uint8_t radiopacket[2];
-	radiopacket[0]= gyrodata;
-	radiopacket[1] = '\0';
+	uint8_t radiopacket[3];
+	//gyro_source = gyro_sign; // 	
+	radiopacket[0] = gyro_source & 0x03 ;  // header ( origin of the sensor data. 0: left leg, 1: right leg. )
+	radiopacket[1]= gyrodata;
+	radiopacket[2] = '\0';
 
 	//char buf[1];
 	//sprintf(buf, "%d", gyrodata);
@@ -406,12 +410,15 @@ void rf_send() {
 
 
 	//itoa(packetnum++, radiopacket, 10);
-	SerialUSB.print("Sending..... "); SerialUSB.println(radiopacket[0]);
+	SerialUSB.print("Sending..... sign: "); 
+	SerialUSB.print(radiopacket[0]);
+	SerialUSB.print(" data: ");
+	SerialUSB.println(radiopacket[1]);
 	//radiopacket[len] = '\0';
 	//radiopacket[0] = 0;
 
 
-	rf95.send((uint8_t*)radiopacket, 2);
+	rf95.send((uint8_t*)radiopacket, 3);
 
 	
 	digitalWrite(PIN_LED, LOW);
@@ -570,13 +577,26 @@ void loop() {
 	 // L3GD30 adjustment
 		//SerialUSB.println(event.gyro.z); // this slows by 300us - but need this in swing data recording.
 		//SerialUSB.print(",");
-	
 
-		float pos_gyro_z = event.gyro.z + 0.28; // manual calibraion
-		pos_gyro_z = (pos_gyro_z > 0) ? pos_gyro_z : 0; // need to calubrate
+
+		float gyro_z = event.gyro.z + 0.28 + 0.25; // manual 
+		SerialUSB.println("gyro_z: " + String(gyro_z));
+		//pos_gyro_z = (pos_gyro_z > 0) ? pos_gyro_z : 0; // need to calubrate  (20210713, temporary removal of pos-only gyro)
+		//gyro_sign = (gyro_z > 0.25) ? 1 : 0;
+		if (gyro_z > 0.25) {
+			gyro_source = 1;  // left leg
+		}
+		else if (gyro_z < -0.25) {
+			gyro_source = 2; // right leg
+		}
+		else {
+			gyro_source = 0;
+		}
+
+		float abs_gyro_z = (gyro_z > 0) ? gyro_z : -gyro_z;
 		//SerialUSB.print("(pos)out_of_gyro: ");
-		//SerialUSB.println(pos_gyro_z);
-		gyrodata = (uint8_t) (pos_gyro_z * gyro_scale); // TODO:  convert to uint8_t.  event.gyro.z ranges from -10 to 10 ish.  offset: -0.56.
+		
+		gyrodata = (uint8_t) (abs_gyro_z * gyro_scale); // TODO:  convert to uint8_t.  event.gyro.z ranges from -10 to 10 ish.  offset: -0.56.
 		// so the rationale for type casting to uint8_t was to make sure the range is 0-255. But this causes the gyro data to clip ! scale it here.  
 
 		//gyrodata = (gyrodata > 255) ? 255 : gyrodata; // make sure the range is 8 bit.
@@ -638,10 +658,10 @@ void loop() {
 	}
 
 	
+	// 20210713:  work with a single gyro for testing the two gyros condition:  forward swing as from the left leg, backward swing as from the right leg
 
-	forward_swing = gyrodata > 0;
-
-	gyrodata = forward_swing ? gyrodata : 0;  // positive flextion only.
+	//forward_swing = gyrodata > 0;
+	//gyrodata = forward_swing ? gyrodata : 0;  // positive flextion only.
 
 
 	//SerialUSB.print("delay ");

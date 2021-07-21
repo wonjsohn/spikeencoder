@@ -125,6 +125,7 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
 
 
+#define I2C_SPIKEENCODER_ADDR	20 // slave address seen by core 1. Make sure the address matches
 
 #define PIN_FR			9  // PA07, for fixed rate pulse output. (TODO: make sure PW are the same)
 //#define PIN_THIN_PULSEOUT	11 // PA16   // IZN output  (pin broken in RFM_relay)
@@ -133,6 +134,7 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 #define PIN_LED				13 // PA17 
 #define PIN_PULSEOUT_TO_CWU  10// PA18 (11, PA16 is damaged in arduino) 
 
+#define PIN_INTERRUPT_C1	5 // PA15   Interrupt pin to call I2C request from the master (C1)  
 #define PIN_DAC				14 // PA02 (A0)
 
 
@@ -291,6 +293,9 @@ int gyro_scale_orig = 30;//was 40 (SP1) but change to match gyro_sender (that do
 int gyro_scale_high_spike_train = 40;  // This parameter to map the gyro to higher spike rate domain ( >300Hz for high values) 
 int gyro_live_factor = 2;    //1: usually upto ~160Hz,  max ~220 Hz. 2: usually upto ~300Hz, max ~400HZ   3: usually up to ~400Hz, max ~600Hz determines the frequency range during live. 
 
+int repeated_data = 0;  // detect a repeated gyrodata that is too long to put put it to zero in case of RFM connection lost.
+
+
 //TCC 
 volatile boolean spikeout = false;
 volatile uint32_t tcc1_per = 30000;//60000; // fixed rate pulse out period (DIV8: 60000 is 100Hz, 30000 is 200 Hz). TCC limit: 24 bits. 
@@ -310,6 +315,9 @@ String encoding_mode = "IZNeuron";  // IZNeuron or fixed rate.
 String cadence_mode = "None"; // e.g. cad50, cad50_kick1st.
 
 uint8_t gyrodata = 0; // wireless gyro data 8 bit
+uint8_t gyro_source = 0;  // 0: from left leg, 1: from right leg.
+uint8_t gyrodata_prev = 0;
+uint8_t gyro_source_prev = 0;
 
 //String transmission_mode = "rf_wireless";  //  wireless mode
 
@@ -359,6 +367,15 @@ void setup() {
 	//while (!SerialUSB) {
 	//	delay(1);
 	//}
+
+	//***  I2C slave connected to CORE1 
+	Wire.begin(I2C_SPIKEENCODER_ADDR); // set itself as slave with address 
+	Wire.onRequest(requestEvent);	//register event
+
+	pinMode(PIN_INTERRUPT_C1, OUTPUT);
+	digitalWrite(PIN_INTERRUPT_C1, LOW);
+
+
 	SerialUSB.begin(9600);
 
 	rf95_setup();  // setup radio head communication 
@@ -502,12 +519,16 @@ int setDAC(float I) {
 }
 
 void rf_receive() {
+
+
+
 	if (rf95.available())
 	{
 		//SerialUSB.println("rf95 available");
 		// Should be a message for us now
-		uint8_t buf[1];
+		uint8_t buf[3];
 		uint8_t len = sizeof(buf);
+
 
 		if (rf95.recv(buf, &len))
 		{
@@ -524,8 +545,24 @@ void rf_receive() {
 			//SerialUSB.println(rf95.lastRssi(), DEC);
 
 			////* trigger one-shot mode pulse * // 20210312 
-			//trigger_one_shot_pulse();
-			gyrodata = buf[0];
+		
+
+			gyro_source = buf[0];
+			gyrodata = buf[1];
+			//SerialUSB.print("Gyro source: ");
+			SerialUSB.print("gyro_source at rf_received: ");
+			SerialUSB.println(gyro_source);
+
+			// I2C send to Core 1 the gyro_source. 
+			if (gyro_source != 0 & gyro_source != gyro_source_prev) {  // send to bit interrupt to core1 only when source changed 
+				digitalWrite(PIN_INTERRUPT_C1, HIGH);
+				delayMicroseconds(200);
+				//delayMicroseconds(20000);
+				digitalWrite(PIN_INTERRUPT_C1, LOW);
+				SerialUSB.println("Interruption bit sent to Core 1");
+			}
+
+
 
 			if (gyrodata > 15) {
 				digitalWrite(PIN_LED, HIGH);
@@ -550,6 +587,25 @@ void rf_receive() {
 
 		}
 	}
+
+	// condition for RF signal lost (battery out or other reason)
+	if (gyrodata > 10) {
+		if (gyrodata == gyrodata_prev) {
+			repeated_data += 1;
+			//SerialUSB.print("SAME DATA: ");
+			//SerialUSB.println(repeated_data);
+			if (repeated_data == 100) { // set current input to neuron to zero.
+				gyrodata = 0;
+				repeated_data = 0;
+				digitalWrite(PIN_LED, LOW);
+			}
+		}
+		else {
+			repeated_data = 0;
+		}
+	}
+	gyrodata_prev = gyrodata;
+	gyro_source_prev = gyro_source;
 }
 
 unsigned int time_us;
@@ -562,6 +618,8 @@ int gyro_scale;
 void loop() {
 	time_us = micros();
 	gyro_scale = gyro_scale_orig;
+	
+
 
 	
 
@@ -729,13 +787,15 @@ void loop() {
 
 	if (runmode == "live") { // live or playback mode. 
 		rf_receive(); // gyrodata gets updated...
-		SerialUSB.print("reception test: ");
+		//SerialUSB.print("Source: ");
+		//SerialUSB.print(gyro_source);
+		//SerialUSB.print(" reception test: ");
 		//SerialUSB.println(gyrodata, DEC);
 
 
 		I_Synapse1 = (float) gyrodata  * gyro_live_factor; //  this gyrodata is uint8_t
 
-		SerialUSB.println(I_Synapse1);
+		//SerialUSB.println(I_Synapse1);
 		//SerialUSB.print(",");
 	} // end of realtime mode
 	else if (runmode == "playback") {
@@ -752,7 +812,7 @@ void loop() {
 			// load one value per loop.
 			int m = floor(n / upsample_factor);
 			sensor_playback = bellshape_swing_level1[m];
-			sensor_playback = sensor_playback * 0.8; // 1 * 0.8 = 0.8
+			sensor_playback = sensor_playback * 0.6; // 1 * 0.8 = 0.8
 			if (n == sizeof(bellshape_swing_level1)* upsample_factor / sizeof(int) - 1) {
 				cadence_mode = "stop";
 				n = 0;
@@ -765,7 +825,7 @@ void loop() {
 		   // load one value per loop.
 			int m = floor(n / upsample_factor);
 			sensor_playback = bellshape_swing_level2[m];
-			sensor_playback = sensor_playback * 0.65;  // 2 * 0.65 = 1.3
+			sensor_playback = sensor_playback * 0.5;  // 2 * 0.65 = 1.3
 
 			//I_Synapse1 = sensor_playback * gyro_scale;
 			if (n == sizeof(bellshape_swing_level2)* upsample_factor / sizeof(int) - 1) {
@@ -780,7 +840,7 @@ void loop() {
 	// load one value per loop.
 			int m = floor(n / upsample_factor);
 			sensor_playback = bellshape_swing_level3[m];
-			sensor_playback = sensor_playback * 1.8;   //3*1.8 = 5.4
+			sensor_playback = sensor_playback * 1.5;   //3*1.8 = 5.4
 
 			//I_Synapse1 = sensor_playback * gyro_scale;
 			if (n == sizeof(bellshape_swing_level3)* upsample_factor / sizeof(int) - 1) {
@@ -874,7 +934,7 @@ void loop() {
 
 			sensor_playback = cad60_trip_1swing_max3p6[m];
 			sensor_playback = sensor_playback + 0.28; // manual calibraion
-			sensor_playback = sensor_playback * 1.2;
+			sensor_playback = sensor_playback * 1.5;
 
 			//I_Synapse1 = sensor_playback * gyro_scale;
 			if (n == sizeof(cad60_trip_1swing_max3p6) * upsample_factor / sizeof(int) - 1) {
@@ -909,6 +969,9 @@ void loop() {
 		}
 
 
+
+		// playback additional slow down 5/6/2021
+		delayMicroseconds(500); //check the frequency. 
 
 	} // end of playback
 
@@ -1043,11 +1106,11 @@ void loop() {
 			configureTCC1_rate(50);
 		}
 		else if (exp3_mode == "MODE2_idle_lowfreq_stim") {
-			if (I_Synapse1 > FR_threshold* gyro_scale) {
+			if (I_Synapse1 > FR_threshold* gyro_scale) { //e.g. 0.3 * 30 = 9
 				configureTCC1_rate(200);
 			}
 			else {
-				configureTCC1_rate(25);
+				configureTCC1_rate(35);
 			}
 		}
 		else if (exp3_mode == "MODE4_idle_200_run_300Hz") {
@@ -1458,6 +1521,17 @@ void interrupt_pulsegen_FR()
 }
 
 
+
+// I2C receiver
+void requestEvent() {
+	byte gaitstate;
+	//gaitstate2bits = gyro_source & 0x03; //use first two bits (b00000-gyro_source) , gyrp_source 1: left leg, 2:right leg, 0: no movement  
+	uint8_t current_level = 5;  // 0, 1, 2, 3, 4, 5, 6, 7 (3 bits, 8 levels)
+	gaitstate = ((current_level & 0x07) << 2) + (gyro_source & 0x03) & 0xff;
+
+	Wire.write(gaitstate); // respond with message of 1 bytes
+
+}
 
 
 #if IS_BNO055
